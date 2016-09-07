@@ -3,7 +3,6 @@ from __future__ import print_function
 import sys
 import os
 import struct
-import getpass
 try:
     import usocket as socket
 except ImportError:
@@ -17,7 +16,10 @@ SANDBOX = ""
 #SANDBOX = "/tmp/webrepl/"
 DEBUG = 0
 
-WEBREPL_FILE = "<2sBBQLH64s"
+WEBREPL_REQ_S = "<2sBBQLH64s"
+WEBREPL_PUT_FILE = 1
+WEBREPL_GET_FILE = 2
+WEBREPL_GET_VER  = 3
 
 
 def debugmsg(msg):
@@ -86,13 +88,12 @@ else:
             assert req == 9 and val == 2
 
 
-def login(ws):
+def login(ws, passwd):
     while True:
         c = ws.read(1, text_ok=True)
         if c == b":":
             assert ws.read(1, text_ok=True) == b" "
             break
-    passwd = getpass.getpass()
     ws.write(passwd.encode("utf-8") + b"\r")
 
 def read_resp(ws):
@@ -101,10 +102,24 @@ def read_resp(ws):
     assert sig == b"WB"
     return code
 
+
+def send_req(ws, op, sz=0, fname=b""):
+    rec = struct.pack(WEBREPL_REQ_S, b"WA", op, 0, 0, sz, len(fname), fname)
+    debugmsg("%r %d" % (rec, len(rec)))
+    ws.write(rec)
+
+
+def get_ver(ws):
+    send_req(ws, WEBREPL_GET_VER)
+    d = ws.read(3)
+    d = struct.unpack("<BBB", d)
+    return d
+
+
 def put_file(ws, local_file, remote_file):
     sz = os.stat(local_file)[6]
     dest_fname = (SANDBOX + remote_file).encode("utf-8")
-    rec = struct.pack(WEBREPL_FILE, b"WA", 1, 0, 0, sz, len(dest_fname), dest_fname)
+    rec = struct.pack(WEBREPL_REQ_S, b"WA", WEBREPL_PUT_FILE, 0, 0, sz, len(dest_fname), dest_fname)
     debugmsg("%r %d" % (rec, len(rec)))
     ws.write(rec[:10])
     ws.write(rec[10:])
@@ -124,12 +139,14 @@ def put_file(ws, local_file, remote_file):
 
 def get_file(ws, local_file, remote_file):
     src_fname = (SANDBOX + remote_file).encode("utf-8")
-    rec = struct.pack(WEBREPL_FILE, b"WA", 2, 0, 0, 0, len(src_fname), src_fname)
-    print(rec, len(rec))
+    rec = struct.pack(WEBREPL_REQ_S, b"WA", WEBREPL_GET_FILE, 0, 0, 0, len(src_fname), src_fname)
+    debugmsg("%r %d" % (rec, len(rec)))
     ws.write(rec)
     assert read_resp(ws) == 0
     with open(local_file, "wb") as f:
+        cnt = 0
         while True:
+            ws.write(b"\0")
             (sz,) = struct.unpack("<H", ws.read(2))
             if sz == 0:
                 break
@@ -137,8 +154,12 @@ def get_file(ws, local_file, remote_file):
                 buf = ws.read(sz)
                 if not buf:
                     raise OSError()
+                cnt += len(buf)
                 f.write(buf)
                 sz -= len(buf)
+                sys.stdout.write("Received %d bytes\r" % cnt)
+                sys.stdout.flush()
+    print()
     assert read_resp(ws) == 0
 
 
@@ -167,6 +188,7 @@ def parse_remote(remote):
         host, port = remote.split(":")
         port = int(port)
     return (host, port, fname)
+
 
 def main():
 
@@ -208,7 +230,10 @@ def main():
 
     ws = websocket(s)
 
-    login(ws)
+    import getpass
+    passwd = getpass.getpass()
+    login(ws, passwd)
+    print("Remote WebREPL version:", get_ver(ws))
 
     # Set websocket to send data marked as "binary"
     ws.ioctl(9, 2)
