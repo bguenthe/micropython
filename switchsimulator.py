@@ -47,7 +47,8 @@ if __name__ == "__main__":
                 payload['value'] = switchstatus
                 payload['counter'] = str(i)
 
-                client.publish("/to/switch", json.dumps(payload))
+                #client.publish("to_devive/broadcast/staus", json.dumps(payload))
+                client.publish("wemos01/to_device/switch", json.dumps(payload))
                 client.publish("wemos02/to_device/switch", json.dumps(payload))
                 print(json.dumps(payload))
                 time.sleep(60)  # jede Minute

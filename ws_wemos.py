@@ -2,6 +2,7 @@ import gc
 import json
 import sys
 import time
+#import os
 
 import machine
 
@@ -23,7 +24,8 @@ from simple import MQTTClient
 
 # mosquitto_pub -t '5c:cf:7f:83:0d:69/to_device/switch' -m '{"value": "off"}'
 # mosquitto_pub -t '5c:cf:7f:83:0d:69/to_device/LED' -m '{"value": "off"}'
-# mosquitto_pub -t '5c:cf:7f:83:0d:69/to_device/command' -m '{"value": "setdevicename", "name": "wemos2"}'
+# mosquitto_pub -t '5c:cf:7f:83:0d:69/to_device/command' -m '{"value": "setdevicename", "name": "wemos02"}'
+# mosquitto_pub -t '5c:cf:7f:83:12:6b/to_device/command' -m '{"value": "setdevicename", "name": "wemos01"}'
 
 
 class WsWemos:
@@ -63,12 +65,12 @@ class WsWemos:
                 self.c.set_callback(self.sub)
                 self.c.connect()
                 self.c.subscribe(self.TOPIC)  # alle to Meldungen an dieses Gerät
-                self.c.subscribe(b'to_device/#')  # broadcast
+                self.c.subscribe(b'to_device/broadcast/#')  # broadcast
                 print("WsWemos connect - Connected to %s, subscribed to %s %s topic" % (
                     self.server, self.TOPIC, 'to_device'))
                 self.startticks = time.ticks_ms()
                 return
-            except OSError as e:
+            except Exception as e:
                 print("WsWemos connect - MQTT can't connect", e)
                 time.sleep(1)
 
@@ -122,9 +124,9 @@ class WsWemos:
                 #     else:
                 #         self.pinLED.value(1)
                 #         self.ledstatus = 'off'
-
-            self.send_status(payload)
         elif topic == self.devicename + b"/to_device/status":
+            self.send_status(payload)
+        elif topic == b"to_device/broadcast/status":
             self.send_status(payload)
 
     def send_status(self, payload):
@@ -132,6 +134,7 @@ class WsWemos:
         payload['switchstatus'] = self.switchstatus
         payload['ledstatus'] = self.ledstatus
         payload['mac'] = self.mac
+        #payload['uname'] = os.uname() # memory error
         self.c.publish(self.devicename + b"/from_device/status", json.dumps(payload))
 
     def checkMessage(self):
